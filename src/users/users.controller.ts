@@ -7,6 +7,9 @@ import {
   Param,
   Body,
   Query,
+  UnauthorizedException,
+  InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { SSOUser } from './user.schema';
@@ -34,7 +37,7 @@ export class UsersController {
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10'
   ): Promise<
-    | { data: any; total: number; page: number; limit: number }
+    | { data: SSOUser; total: number; page: number; limit: number }
     | { error: string }
   > {
     try {
@@ -71,27 +74,102 @@ export class UsersController {
   async update(
     @Param('id') id: string,
     @Body() userData: Partial<SSOUser>
-  ): Promise<SSOUser> {
-    return this.usersService.update(id, userData);
+  ): Promise<{ message: string }> {
+    try {
+      const updatedUser = await this.usersService.update(id, userData);
+
+      if (!updatedUser) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      return {
+        message: `User ${updatedUser.name} updated successfully`,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error; // Re-throw known error
+      }
+
+      // Handle unexpected errors
+      throw new InternalServerErrorException(
+        'An error occurred while updating the user'
+      );
+    }
   }
 
   @Delete(':id')
-  async delete(@Param('id') id: string): Promise<void> {
-    return this.usersService.delete(id);
+  async delete(@Param('id') id: string): Promise<{ message: string }> {
+    try {
+      const result = await this.usersService.delete(id);
+
+      if (!result) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      return {
+        message: `User with ID ${id} deleted successfully`,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error; // Re-throw known error
+      }
+
+      // Handle unexpected errors
+      throw new InternalServerErrorException(
+        'An error occurred while deleting the user'
+      );
+    }
   }
 
   @Post('login')
-  async login(
-    @Body() loginData: { email: string; password: string }
-  ): Promise<{ accessToken: string }> {
-    const { email, password } = loginData;
+  async login(@Body() loginData: { email: string; password: string }): Promise<{
+    message: string;
+    accessToken: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      company: string;
+      role: string[];
+    };
+  }> {
+    try {
+      const { email, password } = loginData;
 
-    // Validate user credentials
-    const user = await this.usersService.validateUser(email, password);
+      // Validate user credentials
+      const user = await this.usersService.validateUser(email, password);
 
-    // Generate JWT token
-    const accessToken = this.usersService.generateToken(user);
+      if (!user) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
 
-    return { accessToken, ...user };
+      // Generate JWT token
+      const accessToken = this.usersService.generateToken(user);
+
+      // Create user details object excluding the password
+      const { _id, name, email: userEmail, company, role } = user;
+      const userDetails = {
+        id: _id as string, // Explicitly cast _id to string
+        name,
+        email: userEmail,
+        company,
+        role,
+      };
+
+      return {
+        message: `Welcome ${name}`,
+        accessToken,
+        user: userDetails,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error; // Re-throw known error
+      }
+
+      // Handle unexpected errors
+      throw new InternalServerErrorException(
+        'An error occurred while processing the login request'
+      );
+    }
   }
 }

@@ -62,56 +62,94 @@ export class UsersService {
   }
 
   async findOne(id: string): Promise<SSOUser> {
-    const user = await this.userModel.findById(id).exec();
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+    try {
+      const user = await this.userModel.findById(id).exec();
+      if (!user) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+      return user;
+    } catch (error) {
+      throw new InternalServerErrorException(
+        'An error occurred while fetching the user'
+      );
     }
-    return user;
   }
 
   async update(id: string, userData: Partial<SSOUser>): Promise<SSOUser> {
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(id, userData, { new: true })
-      .exec();
-    if (!updatedUser) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+    try {
+      const updatedUser = await this.userModel
+        .findByIdAndUpdate(id, userData, { new: true })
+        .exec();
+      if (!updatedUser) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+      return updatedUser;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'An error occurred while updating the user'
+      );
     }
-    return updatedUser;
   }
 
-  async delete(id: string): Promise<void> {
-    const result = await this.userModel.findByIdAndDelete(id).exec();
-    if (!result) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+  async delete(id: string): Promise<SSOUser> {
+    try {
+      const result = await this.userModel.findByIdAndDelete(id).exec();
+      if (!result) {
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'An error occurred while deleting the user'
+      );
     }
   }
 
   async validateUser(email: string, password: string): Promise<SSOUser> {
-    const user = await this.userModel.findOne({ email }).exec();
-    if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+    try {
+      const user = await this.userModel.findOne({ email }).exec();
+      if (!user) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
 
-    return user; // Return user if valid
+      return user; // Return user if valid
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'An error occurred while validating the user'
+      );
+    }
   }
 
   // Generate JWT Token
   generateToken(user: SSOUser): string {
-    const payload = {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    };
+    try {
+      const payload = {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      };
 
-    const secret = process.env.JWT_SECRET || 'MY_SUPER_SECRET'; // Use environment variable for the secret
-    const token = jwt.sign(payload, secret, { expiresIn: '1h' }); // Token expires in 1 hour
-
-    return token;
+      const secret = process.env.JWT_SECRET || 'MY_SUPER_SECRET'; // Use environment variable for the secret
+      return jwt.sign(payload, secret, { expiresIn: '1h' }); // Token expires in 1 hour
+    } catch (error) {
+      throw new InternalServerErrorException(
+        'An error occurred while generating the token'
+      );
+    }
   }
 }
