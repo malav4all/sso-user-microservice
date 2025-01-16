@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   UnauthorizedException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -15,26 +16,49 @@ export class UsersService {
   constructor(@InjectModel(SSOUser.name) private userModel: Model<SSOUser>) {}
 
   async create(userData: Partial<SSOUser>): Promise<SSOUser> {
-    // Check for duplicate email
-    const existingUser = await this.userModel.findOne({
-      email: userData.email,
-    });
-    if (existingUser) {
-      throw new ConflictException('Email already in use');
+    try {
+      // Check if the user already exists
+      const existingUser = await this.userModel.findOne({
+        email: userData.email,
+      });
+      if (existingUser) {
+        throw new ConflictException('Email already in use');
+      }
+
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+
+      // Create and save the new user
+      const user = new this.userModel({
+        ...userData,
+        password: hashedPassword,
+      });
+      return await user.save();
+    } catch (error) {
+      // Handle known error types
+      if (error instanceof ConflictException) {
+        throw error; // Re-throw to maintain context
+      }
+      // Handle other potential errors
+      throw new InternalServerErrorException(
+        'An error occurred while creating the user'
+      );
     }
-
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
-
-    const user = new this.userModel({
-      ...userData,
-      password: hashedPassword,
-    });
-    return user.save();
   }
 
-  async findAll(): Promise<SSOUser[]> {
-    return this.userModel.find().exec();
+  async findAll(
+    page: number = 1,
+    limit: number = 10
+  ): Promise<{ data: any; total: number; page: number; limit: number }> {
+    try {
+      const skip = (page - 1) * limit; // Calculate documents to skip
+      const total = await this.userModel.countDocuments().exec(); // Get total number of documents
+      const data = await this.userModel.find().skip(skip).limit(limit).exec(); // Fetch paginated data
+
+      return { data, total, page, limit };
+    } catch (error) {
+      throw new Error('Database query failed');
+    }
   }
 
   async findOne(id: string): Promise<SSOUser> {

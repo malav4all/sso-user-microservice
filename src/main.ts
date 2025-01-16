@@ -5,7 +5,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const PORT = process.env.PORT || 7000;
+  const PORT = process.env.PORT || 9000;
   // Start the Nest app
   await app.listen(PORT);
   console.log(`Product microservice is running on http://localhost:${PORT}`);
